@@ -1,0 +1,100 @@
+---
+title: "Activity Analysis"
+author: "Shubham"
+date: "November 4, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,cache = TRUE)
+```
+
+Devices such as Jawbone Up, Nike FuelBand, and Fitbit can be used to collect a large amount of data on human activity and a lot of enthusiasts use these devices to collect and analyse there daily activities and exercises.However the way they do their execise is also important.In this report we have tried to fit a prediction algorithm that would be predicting the type of exercise a particular user will do. This has been divided into five groups in the class Variable in our data set.
+
+
+#Getting and Cleaning Data
+
+Let us first quickly get the two data sets (both training and test data sets into R)
+```{r}
+training<- read.csv("pml-training.csv",header = TRUE,na.strings = c("  ","#DIV/0!"), stringsAsFactors = FALSE)
+testing<- read.csv("pml-testing.csv",header = TRUE, na.strings = c("  ","#DIV/0!"), stringsAsFactors = FALSE)
+```
+
+Let's first get the data cleaned by removing the near zero value covariates and the ones with a large proportion of "NA" values as these covariates would not be a good choice of variables for our model.
+
+```{r}
+##Removing variables with single values.
+library(caret)
+removenzv<- nearZeroVar(training, saveMetrics = TRUE)$nzv
+
+trainingclean<- training[, !removenzv]
+dim(trainingclean)
+```
+
+We are now left with 83 variables however let's do some more cleaning.
+
+```{r}
+TotalNAs<- function(x){sum(is.na(x))}
+NAColumns<-sapply(trainingclean[names(trainingclean)],TotalNAs)/nrow(trainingclean)>0.7
+
+# Removing columns with NA.
+trainingclean<- trainingclean[,!NAColumns]
+
+#Let's also remove Id variables and timestamps.
+trainingclean<- trainingclean[, 7:59]
+```
+
+Now we will create a validation set or testing set to calculate the out of sample error and fit our model precisely.
+
+```{r}
+datapartition<- createDataPartition(trainingclean$classe, p=0.7, list = FALSE)
+trainingFinal<- trainingclean[datapartition, ]
+ValidationSet<- trainingclean[-datapartition, ]
+```
+
+#Model Fitting and Prediction
+
+Let us fit a classification tree model on the training data.
+```{r}
+CrossVal<- trainControl(method = "cv",10,preProcOptions = c("center","scale"))
+TreeMod<- train(classe~.,    data=trainingFinal, method = "rpart", trControl=CrossVal)
+TreeMod
+```
+
+Classification tree does not seem to fit perfectly. 
+Let's try Generalized boosting model.
+
+```{r, results=FALSE, echo=TRUE}
+CrossVal<- trainControl(method = "cv",10,preProcOptions = c("center","scale"))
+GbmMod<- train(classe~.,    data=trainingFinal, method = "gbm", trControl=CrossVal)
+```
+
+```{r}
+GbmMod
+```
+
+Generelized boosting model with centering and scalng the variables seems to fit correctly. 
+
+Now lets predict the outcome on the validation set.
+
+```{r}
+Prediction1<- predict(GbmMod, ValidationSet)
+
+confusionMatrix(ValidationSet$classe, Prediction1)
+
+```
+
+
+#Results
+Let us look at the results Test data set.
+
+```{r}
+testingclean<- testing[,!removenzv]
+testingclean<- testingclean[,!NAColumns]
+testingclean<- testingclean[, 7:59]
+
+PredictionFinal<- predict(GbmMod,testingclean)
+
+PredictionFinal
+```
+
